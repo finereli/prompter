@@ -1,0 +1,1 @@
+../../vendor/sherpa-onnx-wasm-simd-v1.13.7-en-asr-zipformer/sherpa-onnx-wasm-main-asr.js

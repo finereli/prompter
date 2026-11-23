@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prompter</title>
+<style>
+  :root { --bg: #0b0b0c; --fg: #f4f4f5; --done: #52525b; --cur: #fbbf24; --dim: #71717a; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: Inter, system-ui, sans-serif; overflow: hidden; }
+  #viewport { position: absolute; inset: 0 0 64px 0; overflow: hidden; }
+  #text { position: absolute; left: 50%; width: min(1100px, 88vw); transform: translateX(-50%);
+    font-size: 52px; line-height: 1.45; font-weight: 500; transition: top 280ms ease-out; }
+  #text p { margin: 0 0 0.9em; }
+  .w { transition: color 160ms; }
+  .w.done { color: var(--done); }
+  .w.cur { color: var(--cur); }
+  #guide { position: absolute; left: 0; right: 0; top: 33%; height: 0; border-top: 1px dashed #27272a; pointer-events: none; }
+  #bar { position: absolute; left: 0; right: 0; bottom: 0; height: 64px; display: flex; gap: 28px;
+    align-items: center; padding: 0 24px; font: 14px ui-monospace, monospace; color: var(--dim);
+    border-top: 1px solid #1c1c1f; }
+  #heard { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
+  #off { color: #f87171; visibility: hidden; }
+  b { color: var(--fg); font-weight: 500; }
+</style>
+</head>
+<body>
+<div id="viewport"><div id="guide"></div><div id="text"></div></div>
+<div id="bar">
+  <span>delay <b id="lat">-</b> ms</span>
+  <span>median <b id="p50">-</b> ms</span>
+  <span>cpu <b id="rtf">-</b></span>
+  <span id="off">off script - holding</span>
+  <span id="heard"></span>
+</div>
+<script>
+const text = document.getElementById('text');
+const viewport = document.getElementById('viewport');
+let spans = [];
+let lastPos = -1;
+
+fetch('/script').then(r => r.json()).then(tokens => {
+  let p = document.createElement('p');
+  text.appendChild(p);
+  for (const tok of tokens) {
+    if (tok.br) { p = document.createElement('p'); text.appendChild(p); continue; }
+    const s = document.createElement('span');
+    s.textContent = tok.t;
+    if (tok.i !== undefined) { s.className = 'w'; spans[tok.i] = s; }
+    p.appendChild(s);
+    p.appendChild(document.createTextNode(' '));
+  }
+  place(0);
+  const es = new EventSource('/events');
+  es.onmessage = e => update(JSON.parse(e.data));
+});
+
+function place(pos) {
+  const target = spans[Math.min(pos, spans.length - 1)];
+  if (!target) return;
+  // Keep the next word to read on the guide line, a third of the way down.
+  const y = viewport.clientHeight * 0.33 - target.offsetTop - target.offsetHeight / 2;
+  text.style.top = y + 'px';
+}
+
+function update(s) {
+  if (s.pos !== lastPos) {
+    spans.forEach((el, i) => {
+      el.classList.toggle('done', i < s.pos);
+      el.classList.toggle('cur', i === s.pos);
+    });
+    place(s.pos);
+    lastPos = s.pos;
+  }
+  document.getElementById('lat').textContent = s.lat_ms ?? '-';
+  document.getElementById('p50').textContent = s.lat_p50 ?? '-';
+  document.getElementById('rtf').textContent = s.rtf ?? '-';
+  document.getElementById('off').style.visibility = s.off ? 'visible' : 'hidden';
+  document.getElementById('heard').textContent = s.heard;
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prompter</title>
+<style>
+  :root { --bg: #0b0b0c; --fg: #f4f4f5; --done: #4b4b52; --cur: #fbbf24; --dim: #71717a; --line: #1f1f23; --rec: #ef4444; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: Inter, system-ui, sans-serif; overflow: hidden; }
+  button { font: inherit; color: var(--fg); background: #18181b; border: 1px solid #27272a;
+    border-radius: 999px; padding: 7px 16px; cursor: pointer; }
+  button:hover:not(:disabled) { background: #222226; }
+  button:disabled { opacity: .4; cursor: default; }
+  button.rec { border-color: var(--rec); }
+  button.rec.on { background: var(--rec); }
+
+  #top { position: absolute; top: 0; left: 0; right: 0; height: 56px; display: flex; gap: 10px;
+    align-items: center; padding: 0 16px; z-index: 3; background: linear-gradient(var(--bg) 70%, transparent); }
+  #top .spacer { flex: 1; }
+  #status { color: var(--dim); font-size: 14px; }
+  #timer { font: 15px ui-monospace, monospace; color: var(--rec); min-width: 56px; }
+
+  #viewport { position: absolute; top: 0; bottom: 56px; left: 0; right: 0; overflow: hidden; }
+  #text { position: absolute; left: 50%; width: min(var(--col, 15em), 86vw); transform: translateX(-50%);
+    font-size: var(--fs, 52px); line-height: 1.45; font-weight: 500; transition: top 260ms ease-out; }
+  #text.mirror { transform: translateX(-50%) scaleX(-1); }
+  #text p { margin: 0 0 .9em; }
+  .w { transition: color 140ms; }
+  .w.done { color: var(--done); }
+  .w.cur { color: var(--cur); }
+  /* Sits just left of the column; font-size makes the column's em width match the text's. */
+  #guide { position: absolute; font-size: var(--fs, 52px); left: calc(50% - min(var(--col, 15em), 86vw) / 2 - 34px);
+    width: 18px; height: 3px; background: var(--cur); border-radius: 2px; top: var(--guide, 22%); }
+
+  #cam { position: absolute; width: 240px; border-radius: 10px; z-index: 4;
+    transform: scaleX(-1); background: #000; border: 1px solid var(--line);
+    cursor: grab; touch-action: none; user-select: none; }
+  #cam.dragging { cursor: grabbing; opacity: .85; }
+  #cam.hidden { display: none; }
+
+  #bar { position: absolute; left: 0; right: 0; bottom: 0; height: 56px; display: flex; gap: 26px;
+    align-items: center; padding: 0 20px; font: 13px ui-monospace, monospace; color: var(--dim);
+    border-top: 1px solid var(--line); }
+  #bar b { color: var(--fg); font-weight: 500; }
+  #heard { flex: 1; white-space: nowrap; overflow: hidden; direction: rtl; text-align: left; }
+  #off { color: #f87171; visibility: hidden; }
+
+  #editor { position: absolute; inset: 0; background: rgba(11,11,12,.96); z-index: 5; display: none;
+    flex-direction: column; padding: 24px; gap: 12px; }
+  #editor.open { display: flex; }
+  #editor textarea { flex: 1; background: #111113; color: var(--fg); border: 1px solid #27272a; border-radius: 10px;
+    padding: 18px; font: 18px/1.6 Inter, system-ui, sans-serif; resize: none; }
+  #editor .row { display: flex; gap: 10px; align-items: center; color: var(--dim); font-size: 14px; }
+  #editor .row .spacer { flex: 1; }
+  kbd { font: 12px ui-monospace, monospace; border: 1px solid #3f3f46; border-radius: 4px; padding: 1px 5px; }
+</style>
+</head>
+<body>
+<div id="viewport"><div id="guide"></div><div id="text"></div></div>
+<video id="cam" autoplay muted playsinline class="hidden"></video>
+
+<div id="top">
+  <button id="scriptBtn">Script</button>
+  <button id="startBtn" disabled>Loading speech model…</button>
+  <button id="recBtn" class="rec" disabled>● Record</button>
+  <span id="timer"></span>
+  <span id="status"></span>
+  <span class="spacer"></span>
+  <button id="smaller" title="Smaller text">A−</button>
+  <button id="bigger" title="Bigger text">A+</button>
+  <button id="narrower" title="Narrower column ([)">⇥⇤</button>
+  <button id="wider" title="Wider column (])">⇤⇥</button>
+  <button id="camBtn" title="Camera preview (V)">Camera</button>
+  <button id="mirrorBtn" title="Mirror text for a beam-splitter glass">Mirror</button>
+</div>
+
+<div id="bar" style="top:auto">
+  <span>delay <b id="lat">-</b> ms</span>
+  <span>median <b id="p50">-</b> ms</span>
+  <span>cpu <b id="cpu">-</b></span>
+  <span id="off">off script - holding</span>
+  <span id="heard"></span>
+</div>
+
+<div id="editor">
+  <div class="row">Paste or type your script. Blank lines separate paragraphs. You can also drop a .md or .txt file on the page.</div>
+  <textarea id="scriptText" spellcheck="false"></textarea>
+  <div class="row">
+    <span><kbd>R</kbd> record · <kbd>↑</kbd><kbd>↓</kbd> nudge · <kbd>Home</kbd> back to top · <kbd>V</kbd> camera · <kbd>[</kbd><kbd>]</kbd> column width</span>
+    <span class="spacer"></span>
+    <button id="cancelEdit">Cancel</button>
+    <button id="saveEdit">Use this script</button>
+  </div>
+</div>
+
+<script>
+  // Emscripten looks for this global before the speech engine script loads.
+  window.sherpaReady = new Promise(resolve => {
+    window.Module = {
+      locateFile: path => 'sherpa/' + path,
+      setStatus: s => { const el = document.getElementById('status'); if (el && s) el.textContent = s; },
+      onRuntimeInitialized: resolve,
+    };
+  });
+</script>
+<script src="sherpa/sherpa-onnx-asr.js"></script>
+<script src="sherpa/sherpa-onnx-wasm-main-asr.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
