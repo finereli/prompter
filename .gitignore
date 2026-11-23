@@ -3,3 +3,4 @@ models/
 vendor/
 run.log
 __pycache__/
+studio/work/
