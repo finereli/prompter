@@ -44,6 +44,16 @@ function showPos(pos) {
   $('text').style.top = (guide - target.offsetTop - target.offsetHeight / 2 + 1) + 'px';
 }
 
+function restart() {
+  if (!tracker) return;
+  done = []; seenWords = 0;
+  if (asrStream) { recognizer.reset(asrStream); segOffset = fed; }
+  tracker.pending = null; tracker.offScript = false;
+  $('off').style.visibility = 'hidden';
+  $('heard').textContent = '';
+  setPos(0);
+}
+
 function setPos(pos) {
   if (!tracker) return;
   tracker.pos = Math.max(0, Math.min(pos, spans.length));
@@ -109,9 +119,15 @@ function onAudio(samples) {
 
 let media = null, audioCtx = null;
 
-async function start() {
-  $('startBtn').disabled = true;
-  $('startBtn').textContent = 'Starting…';
+// Opens camera and mic and starts listening. Safe to call more than once.
+let starting = null;
+function start() {
+  starting ??= openDevices().catch(e => { starting = null; $('status').textContent = e.message; throw e; });
+  return starting;
+}
+
+async function openDevices() {
+  $('status').textContent = 'Starting camera and mic…';
   media = await navigator.mediaDevices.getUserMedia({
     video: { width: { ideal: 1920 }, height: { ideal: 1440 }, frameRate: { ideal: 30 } },
     // Keep the voice untouched for the recording; recognition copes fine.
@@ -128,9 +144,25 @@ async function start() {
 
   asrStream = recognizer.createStream();
   const v = media.getVideoTracks()[0].getSettings();
-  $('status').textContent = `${v.width}×${v.height} @ ${Math.round(v.frameRate)} fps`;
-  $('startBtn').textContent = 'Listening';
-  $('recBtn').disabled = false;
+  const ready = `${v.width}×${v.height} @ ${Math.round(v.frameRate)} fps`;
+  // Opened on page load, Chrome keeps audio paused until the first click or key.
+  if (audioCtx.state === 'suspended') {
+    $('status').textContent = 'Click anywhere or press a key to start listening';
+    const wake = () => audioCtx.resume().then(() => { $('status').textContent = ready; });
+    addEventListener('pointerdown', wake, { once: true });
+    addEventListener('keydown', wake, { once: true });
+  } else $('status').textContent = ready;
+}
+
+// Camera and mic open on load when you've allowed them before; otherwise the
+// first Record asks.
+async function autoStart() {
+  try {
+    const q = name => navigator.permissions.query({ name }).then(r => r.state);
+    const [cam, mic] = await Promise.all([q('camera'), q('microphone')]);
+    if (cam === 'granted' && mic === 'granted') return start();
+  } catch {}
+  $('status').textContent = 'Press Record to allow camera and mic';
 }
 
 // ---------- recording ----------
@@ -155,21 +187,94 @@ function download(blob, name) {
   setTimeout(() => URL.revokeObjectURL(a.href), 10000);
 }
 
-function toggleRecord() {
-  if (!media) return;
+// ---------- save folder ----------
+// Chromium can write straight into a folder you pick once (File System Access).
+// The handle lives in IndexedDB so the choice survives reloads. Other browsers
+// fall back to downloads.
+
+const canPickFolder = 'showDirectoryPicker' in window;
+let folder = null;
+
+function idb(mode, fn) {
+  return new Promise((resolve, reject) => {
+    const open = indexedDB.open('prompter', 1);
+    open.onupgradeneeded = () => open.result.createObjectStore('kv');
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const tx = open.result.transaction('kv', mode);
+      const req = fn(tx.objectStore('kv'));
+      tx.oncomplete = () => resolve(req && req.result);
+      tx.onerror = () => reject(tx.error);
+    };
+  });
+}
+
+function showFolder() {
+  $('folderBtn').textContent = folder ? `Saving to ${folder.name}` : 'Choose folder';
+  $('folderBtn').title = folder ? 'Takes are written into this folder. Click to change.' : 'Takes download until you pick a folder';
+}
+
+async function chooseFolder() {
+  try {
+    folder = await window.showDirectoryPicker({ id: 'prompter-takes', mode: 'readwrite' });
+    await idb('readwrite', st => st.put(folder, 'folder'));
+  } catch (e) { if (e.name !== 'AbortError') $('status').textContent = e.message; }
+  showFolder();
+}
+
+// Needs a click or key press when the browser asks again after a reload,
+// which pressing Record provides.
+async function folderReady() {
+  if (!folder) return false;
+  const opts = { mode: 'readwrite' };
+  if (await folder.queryPermission(opts) === 'granted') return true;
+  return await folder.requestPermission(opts) === 'granted';
+}
+
+async function writeFile(name, blob) {
+  if (folder && await folderReady()) {
+    const w = await (await folder.getFileHandle(name, { create: true })).createWritable();
+    await w.write(blob); await w.close();
+  } else download(blob, name);
+}
+
+// ---------- recording ----------
+
+async function toggleRecord() {
+  if (!recognizer) return;
   if (recorder) { recorder.stop(); return; }
+  if (!media) {
+    try { await start(); } catch { return; }
+    // Chrome may hold the audio until a gesture; this click or key press is one.
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
+  }
   const mimeType = pickMime();
+  const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
+  const name = `prompter-${stamp()}`;
+
+  // With a folder, stream each second of video into the file as it records, so
+  // a long take never piles up in memory. Without one, collect and download.
+  let sink = null, writing = Promise.resolve();
+  if (await folderReady()) {
+    try { sink = await (await folder.getFileHandle(`${name}.${ext}`, { create: true })).createWritable(); }
+    catch (e) { $('status').textContent = `Can't write to ${folder.name}: ${e.message}`; }
+  }
   recorder = new MediaRecorder(media, { mimeType, videoBitsPerSecond: 8_000_000, audioBitsPerSecond: 192_000 });
   chunks = [];
-  recorder.ondataavailable = e => e.data.size && chunks.push(e.data);
-  recorder.onstop = () => {
-    const ext = recorder.mimeType.includes('mp4') ? 'mp4' : 'webm';
-    const name = `prompter-${stamp()}`;
-    download(new Blob(chunks, { type: recorder.mimeType }), `${name}.${ext}`);
+  recorder.ondataavailable = e => {
+    if (!e.data.size) return;
+    if (sink) writing = writing.then(() => sink.write(e.data));
+    else chunks.push(e.data);
+  };
+  recorder.onstop = async () => {
+    const type = recorder.mimeType;
+    if (sink) { await writing; await sink.close(); }
+    else download(new Blob(chunks, { type }), `${name}.${ext}`);
     // The script and where you were in it over time, for the edit step.
     timeline.script = localStorage.getItem('prompter.script');
-    download(new Blob([JSON.stringify(timeline)], { type: 'application/json' }), `${name}.json`);
-    recorder = null; timeline = null;
+    await writeFile(`${name}.json`, new Blob([JSON.stringify(timeline)], { type: 'application/json' }));
+    $('status').textContent = sink ? `Saved ${name}.${ext} to ${folder.name}` : `Downloaded ${name}.${ext}`;
+    recorder = null; timeline = null; chunks = [];
     clearInterval(timerId);
     $('timer').textContent = '';
     $('recBtn').classList.remove('on');
@@ -185,7 +290,7 @@ function toggleRecord() {
   }, 250);
   $('recBtn').classList.add('on');
   $('recBtn').textContent = '■ Stop';
-  $('status').textContent = `recording ${recorder.mimeType.split(';')[0]}`;
+  $('status').textContent = `recording ${recorder.mimeType.split(';')[0]}${sink ? ' to ' + folder.name : ''}`;
 }
 
 // ---------- UI ----------
@@ -199,7 +304,6 @@ function openEditor() {
 $('scriptBtn').onclick = openEditor;
 $('cancelEdit').onclick = () => $('editor').classList.remove('open');
 $('saveEdit').onclick = () => { loadScript($('scriptText').value); $('editor').classList.remove('open'); };
-$('startBtn').onclick = () => start().catch(e => { $('status').textContent = e.message; $('startBtn').disabled = false; $('startBtn').textContent = 'Start'; });
 $('recBtn').onclick = toggleRecord;
 $('camBtn').onclick = () => $('cam').classList.toggle('hidden');
 
@@ -244,7 +348,11 @@ $('camBtn').onclick = () => $('cam').classList.toggle('hidden');
   addEventListener('resize', restore);
   restore();
 })();
-$('mirrorBtn').onclick = () => $('text').classList.toggle('mirror');
+$('restartBtn').onclick = restart;
+if (canPickFolder) {
+  $('folderBtn').onclick = chooseFolder;
+  idb('readonly', st => st.get('folder')).then(h => { folder = h || null; showFolder(); }).catch(showFolder);
+} else $('folderBtn').hidden = true;
 
 function fontSize(delta) {
   const cur = parseInt(localStorage.getItem('prompter.fs') || '52');
@@ -276,7 +384,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'v' || e.key === 'V') $('cam').classList.toggle('hidden');
   else if (e.key === 'ArrowDown') setPos(tracker.pos + 5);
   else if (e.key === 'ArrowUp') setPos(tracker.pos - 5);
-  else if (e.key === 'Home') setPos(0);
+  else if (e.key === 'Home') restart();
   else if (e.key === '[') columnWidth(-1);
   else if (e.key === ']') columnWidth(1);
   else return;
@@ -299,9 +407,8 @@ else fetch('sample.md').then(r => r.text()).then(loadScript);
 
 window.sherpaReady.then(() => {
   recognizer = createOnlineRecognizer(Module);
-  $('status').textContent = '';
-  $('startBtn').disabled = false;
-  $('startBtn').textContent = 'Start';
+  $('recBtn').disabled = false;
+  if (!new URLSearchParams(location.search).has('autostart')) autoStart();
 });
 
 // Test hook: ?autostart begins listening without a click and logs stats.

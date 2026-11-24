@@ -25,7 +25,6 @@
   #viewport { position: absolute; top: 0; bottom: 56px; left: 0; right: 0; overflow: hidden; }
   #text { position: absolute; left: 50%; width: min(var(--col, 15em), 86vw); transform: translateX(-50%);
     font-size: var(--fs, 52px); line-height: 1.45; font-weight: 500; transition: top 260ms ease-out; }
-  #text.mirror { transform: translateX(-50%) scaleX(-1); }
   #text p { margin: 0 0 .9em; }
   .w { transition: color 140ms; }
   .w.done { color: var(--done); }
@@ -35,7 +34,8 @@
     width: 18px; height: 3px; background: var(--cur); border-radius: 2px; top: var(--guide, 22%); }
 
   #cam { position: absolute; width: 240px; border-radius: 10px; z-index: 4;
-    transform: scaleX(-1); background: #000; border: 1px solid var(--line);
+    transform: scaleX(-1); /* selfie view; recordings aren't mirrored */
+    background: #000; border: 1px solid var(--line);
     cursor: grab; touch-action: none; user-select: none; }
   #cam.dragging { cursor: grabbing; opacity: .85; }
   #cam.hidden { display: none; }
@@ -63,17 +63,17 @@
 
 <div id="top">
   <button id="scriptBtn">Script</button>
-  <button id="startBtn" disabled>Loading speech model…</button>
   <button id="recBtn" class="rec" disabled>● Record</button>
+  <button id="restartBtn" title="Back to the start of the script (Home)">↺ Restart</button>
   <span id="timer"></span>
-  <span id="status"></span>
+  <span id="status">Loading speech model…</span>
   <span class="spacer"></span>
   <button id="smaller" title="Smaller text">A−</button>
   <button id="bigger" title="Bigger text">A+</button>
   <button id="narrower" title="Narrower column ([)">⇥⇤</button>
   <button id="wider" title="Wider column (])">⇤⇥</button>
   <button id="camBtn" title="Camera preview (V)">Camera</button>
-  <button id="mirrorBtn" title="Mirror text for a beam-splitter glass">Mirror</button>
+  <button id="folderBtn">Choose folder</button>
 </div>
 
 <div id="bar" style="top:auto">
@@ -88,7 +88,7 @@
   <div class="row">Paste or type your script. Blank lines separate paragraphs. You can also drop a .md or .txt file on the page.</div>
   <textarea id="scriptText" spellcheck="false"></textarea>
   <div class="row">
-    <span><kbd>R</kbd> record · <kbd>↑</kbd><kbd>↓</kbd> nudge · <kbd>Home</kbd> back to top · <kbd>V</kbd> camera · <kbd>[</kbd><kbd>]</kbd> column width</span>
+    <span><kbd>R</kbd> record · <kbd>↑</kbd><kbd>↓</kbd> nudge · <kbd>Home</kbd> restart · <kbd>V</kbd> camera · <kbd>[</kbd><kbd>]</kbd> column width</span>
     <span class="spacer"></span>
     <button id="cancelEdit">Cancel</button>
     <button id="saveEdit">Use this script</button>
