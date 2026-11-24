@@ -36,7 +36,8 @@
 
   #viewport { position: absolute; top: 0; bottom: 56px; left: 0; right: 0; overflow: hidden; }
   #text { position: absolute; left: 50%; width: min(var(--col, 15em), 86vw); transform: translateX(-50%);
-    font-size: var(--fs, 52px); line-height: 1.45; font-weight: 500; transition: top 260ms ease-out; }
+    font-size: var(--fs, 52px); line-height: 1.45; font-weight: 500; transition: top 260ms ease-out;
+    text-align: center; /* eyes stay on the centerline */ }
   #text p { margin: 0 0 .9em; }
   .w { transition: color 140ms; }
   .w.done { color: var(--done); }
