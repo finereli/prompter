@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- The app itself: lines of script, the line you're on in amber, the reading marker beside it -->
+  <rect width="512" height="512" rx="112" fill="#0b0b0c"/>
+  <g id="icon">
+    <rect x="132" y="128" width="248" height="44" rx="22" fill="#4b4b52"/>
+    <rect x="64" y="234" width="40" height="44" rx="14" fill="#fbbf24"/>
+    <rect x="132" y="234" width="132" height="44" rx="22" fill="#fbbf24"/>
+    <rect x="284" y="234" width="96" height="44" rx="22" fill="#f4f4f5"/>
+    <rect x="132" y="340" width="200" height="44" rx="22" fill="#f4f4f5"/>
+  </g>
+</svg>

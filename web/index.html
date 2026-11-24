@@ -3,7 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Prompter</title>
+<title>Prompter - a teleprompter that follows your voice</title>
+<meta name="description" content="A teleprompter that listens to you. The text follows your voice, waits through tangents, and records you while you read. Runs entirely in your browser.">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="theme-color" content="#0b0b0c">
+<meta property="og:title" content="Prompter">
+<meta property="og:description" content="A teleprompter that listens to you. The text follows your voice, waits through tangents, and records you while you read. Runs entirely in your browser.">
+<meta property="og:image" content="https://prompter.finereli.com/icons/icon-512.png">
+<meta property="og:url" content="https://prompter.finereli.com/">
+<meta name="twitter:card" content="summary">
 <style>
   :root { --bg: #0b0b0c; --fg: #f4f4f5; --done: #4b4b52; --cur: #fbbf24; --dim: #71717a; --line: #1f1f23; --rec: #ef4444; }
   * { box-sizing: border-box; }
@@ -69,6 +79,7 @@
 <video id="cam" autoplay muted playsinline class="hidden"></video>
 
 <div id="top">
+  <img src="icons/icon.svg" alt="Prompter" width="30" height="30" style="flex-shrink:0;margin-right:4px">
   <button id="scriptBtn">Script</button>
   <button id="promptBtn" disabled title="Follow my voice (Space)">▶ Prompter</button>
   <button id="recBtn" class="rec" disabled title="Record (R)">● Record</button>

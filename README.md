@@ -1,3 +1,5 @@
+<img src="web/icons/icon.svg" alt="Prompter" width="96">
+
 # Prompter
 
 A teleprompter that listens to you. You read, and the text keeps up. When you go off script, it waits. When you come back, it finds you.

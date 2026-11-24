@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- A P drawn from a stem and lines of text, with the current word lit -->
+  <rect width="512" height="512" rx="112" fill="#0b0b0c"/>
+  <g id="icon">
+    <rect x="128" y="104" width="56" height="304" rx="28" fill="#f4f4f5"/>
+    <path d="M156 104 H300 A88 88 0 0 1 300 280 H156 V224 H300 A32 32 0 0 0 300 160 H156 Z" fill="#f4f4f5"/>
+    <circle cx="352" cy="372" r="36" fill="#fbbf24"/>
+  </g>
+</svg>
