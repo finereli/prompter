@@ -29,25 +29,28 @@ The interesting part is [`web/align.js`](web/align.js), which decides where you 
 
 ## Run it locally
 
-The speech model is too big for git, so fetch it once:
+The speech model is too big for git. Fetch sherpa-onnx's WebAssembly bundle and the English streaming model once, then pack them:
 
-    mkdir -p vendor && cd vendor
-    gh release download v1.13.7 -R k2-fsa/sherpa-onnx -p "sherpa-onnx-wasm-simd-v1.13.7-en-asr-zipformer.tar.bz2"
-    tar xjf *.tar.bz2 && rm *.tar.bz2 && cd ..
+    mkdir -p vendor models
+    (cd vendor && gh release download v1.13.7 -R k2-fsa/sherpa-onnx -p "sherpa-onnx-wasm-simd-v1.13.7-en-asr-zipformer.tar.bz2" && tar xjf *.tar.bz2 && rm *.tar.bz2)
+    (cd models && curl -LO https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-en-2023-06-26.tar.bz2 && tar xjf *.tar.bz2 && rm *.tar.bz2)
+    python3 scripts/pack-model.py
+
+The bundle preloads its model from one `.data` file with a list of byte offsets in the loader script. `pack-model.py` swaps in the int8 build of the model, which cuts the download from 191 MB to 72 MB, and writes everything to `web/sherpa/`.
 
 Then serve `web/` and open http://127.0.0.1:8766:
 
     cd web && python3 serve.py
 
-`web/sherpa/` holds symlinks into `vendor/`. `serve.py` is a plain static server with caching turned off, so a reload always picks up your edits.
+`serve.py` is a plain static server with caching turned off, so a reload always picks up your edits.
 
 ## Deploy
 
-It runs on Cloudflare as static assets plus a tiny Worker. The model file (191 MB) is over the 25 MiB limit for static assets, so it lives in R2 and the Worker serves it with a year-long cache header:
+It runs on Cloudflare as static assets plus a tiny Worker. The model file (72 MB) is over the 25 MiB limit for static assets, so it lives in R2 and the Worker serves it with a year-long cache header. That's also why the file name changes whenever the model does.
 
     wrangler r2 bucket create prompter-models
-    wrangler r2 object put prompter-models/sherpa-onnx-wasm-main-asr.data \
-      --file vendor/sherpa-onnx-wasm-simd-v1.13.7-en-asr-zipformer/sherpa-onnx-wasm-main-asr.data --remote
+    wrangler r2 object put prompter-models/prompter-en-2023-06-26-int8.data \
+      --file web/sherpa/prompter-en-2023-06-26-int8.data --remote
     wrangler deploy
 
 Change the `account_id` and the route in `wrangler.jsonc` to your own.
@@ -56,6 +59,7 @@ Change the `account_id` and the route in `wrangler.jsonc` to your own.
 
 - `web/` is the app. `align.js` is the aligner, `app.js` the rest, and `mic-worklet.js` the audio thread.
 - `worker.js` serves the model from R2.
+- `scripts/pack-model.py` builds the speech model bundle.
 - `proto/` holds the first prototype: native sherpa-onnx in Python, pushing positions to a page over server-sent events.
 - `studio/` holds an experiment in local background replacement with Robust Video Matting. It works, but it can't fix bad lighting, which turned out to be the real problem.
 
@@ -63,7 +67,6 @@ Change the `account_id` and the route in `wrangler.jsonc` to your own.
 
 Things I'd like to see, if you feel like building one:
 
-- **A smaller model.** The bundled one is the full-precision 191 MB build. An int8 version of the same model is about 70 MB and should recognize just as well.
 - **More languages.** sherpa-onnx has streaming models for Chinese and other languages, and the aligner only assumes words separated by spaces.
 - **Editing from the timeline.** Each take's `.json` says where you were in the script at every moment. That's enough to cut retakes and dead air automatically.
 - **An installable PWA**, so it opens in its own window.
