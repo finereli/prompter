@@ -432,6 +432,7 @@ else fetch('sample.md').then(r => r.text()).then(loadScript);
 
 window.sherpaReady.then(() => {
   recognizer = createOnlineRecognizer(Module);
+  document.getElementById('progress').style.display = 'none';
   $('recBtn').disabled = false;
   $('promptBtn').disabled = false;
   if (!new URLSearchParams(location.search).has('autostart')) autoStart();

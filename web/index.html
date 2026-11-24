@@ -11,6 +11,7 @@
     font-family: Inter, system-ui, sans-serif; overflow: hidden; }
   button { font: inherit; color: var(--fg); background: #18181b; border: 1px solid #27272a;
     border-radius: 999px; padding: 7px 16px; cursor: pointer; }
+  #top button { white-space: nowrap; flex-shrink: 0; }
   button:hover:not(:disabled) { background: #222226; }
   button:disabled { opacity: .4; cursor: default; }
   button.rec { border-color: var(--rec); }
@@ -20,7 +21,7 @@
   #top { position: absolute; top: 0; left: 0; right: 0; height: 56px; display: flex; gap: 10px;
     align-items: center; padding: 0 16px; z-index: 3; background: linear-gradient(var(--bg) 70%, transparent); }
   #top .spacer { flex: 1; }
-  #status { color: var(--dim); font-size: 14px; }
+  #status { color: var(--dim); font-size: 14px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   #timer { font: 15px ui-monospace, monospace; color: var(--rec); min-width: 56px; }
 
   #viewport { position: absolute; top: 0; bottom: 56px; left: 0; right: 0; overflow: hidden; }
@@ -45,6 +46,11 @@
     align-items: center; padding: 0 20px; font: 13px ui-monospace, monospace; color: var(--dim);
     border-top: 1px solid var(--line); }
   #bar b { color: var(--fg); font-weight: 500; }
+  #progress { display: none; position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 6; background: #1c1c1f; }
+  #progress div { height: 100%; width: 0; background: var(--cur); transition: width 200ms; }
+  #credits { white-space: nowrap; }
+  #credits a { color: var(--dim); text-decoration: none; }
+  #credits a:hover { color: var(--fg); }
   #heard { flex: 1; white-space: nowrap; overflow: hidden; direction: rtl; text-align: left; }
   #off { color: #f87171; visibility: hidden; }
 
@@ -78,12 +84,14 @@
   <button id="folderBtn">Choose folder</button>
 </div>
 
+<div id="progress"><div></div></div>
 <div id="bar" style="top:auto">
   <span>delay <b id="lat">-</b> ms</span>
   <span>median <b id="p50">-</b> ms</span>
   <span>cpu <b id="cpu">-</b></span>
   <span id="off">off script - holding</span>
   <span id="heard"></span>
+  <span id="credits"><a href="https://finereli.com" target="_blank" rel="noopener">Eli Finer</a> · <a href="https://github.com/finereli/prompter" target="_blank" rel="noopener">GitHub</a></span>
 </div>
 
 <div id="editor">
@@ -102,7 +110,20 @@
   window.sherpaReady = new Promise(resolve => {
     window.Module = {
       locateFile: path => 'sherpa/' + path,
-      setStatus: s => { const el = document.getElementById('status'); if (el && s) el.textContent = s; },
+      // Emscripten reports "Downloading data... (loaded/total)" while it fetches the model.
+      setStatus: s => {
+        const el = document.getElementById('status'), bar = document.getElementById('progress');
+        const m = /\((\d+)\/(\d+)\)/.exec(s || '');
+        if (m) {
+          const done = +m[1], total = +m[2], pct = Math.floor(done / total * 100);
+          bar.style.display = 'block';
+          bar.firstElementChild.style.width = pct + '%';
+          el.textContent = `Downloading the speech model: ${pct}% of ${Math.round(total / 1e6)} MB. It stays cached after the first time.`;
+        } else if (!s && bar.style.display === 'block') {
+          bar.firstElementChild.style.width = '100%';
+          el.textContent = 'Preparing the speech model…';
+        }
+      },
       onRuntimeInitialized: resolve,
     };
   });

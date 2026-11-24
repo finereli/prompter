@@ -1,0 +1,12 @@
+{
+  "name": "prompter",
+  "compatibility_date": "2026-11-01",
+  "account_id": "7485eb8ab648601f411b650cd794bce3",
+  // The app is static (web/). The Worker only serves the speech model, which is
+  // too big for static assets (191 MB against the 25 MiB per-file limit), from R2.
+  "main": "worker.js",
+  "assets": { "directory": "web", "binding": "ASSETS", "run_worker_first": ["/sherpa/*.data"] },
+  "r2_buckets": [{ "binding": "MODELS", "bucket_name": "prompter-models" }],
+  "observability": { "enabled": true },
+  "routes": [{ "pattern": "prompter.finereli.com", "custom_domain": true }]
+}
