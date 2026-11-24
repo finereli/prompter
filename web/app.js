@@ -44,14 +44,34 @@ function showPos(pos) {
   $('text').style.top = (guide - target.offsetTop - target.offsetHeight / 2 + 1) + 'px';
 }
 
-function restart() {
-  if (!tracker) return;
+// Forget what was heard, so old words can't pull the position anywhere.
+function forgetHeard() {
   done = []; seenWords = 0;
   if (asrStream) { recognizer.reset(asrStream); segOffset = fed; }
-  tracker.pending = null; tracker.offScript = false;
+  if (tracker) { tracker.pending = null; tracker.offScript = false; }
   $('off').style.visibility = 'hidden';
   $('heard').textContent = '';
+}
+
+// Back to the top of the script. Leaves the prompter on or off, and any recording running.
+function restart() {
+  if (!tracker) return;
+  forgetHeard();
   setPos(0);
+}
+
+// The prompter follows your voice only while it's on. It starts off; pausing keeps your place.
+let following = false;
+async function togglePrompter() {
+  if (!recognizer) return;
+  if (!following) {
+    try { await start(); } catch { return; }
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
+    forgetHeard();  // whatever you said while it was paused shouldn't count
+  }
+  following = !following;
+  $('promptBtn').textContent = following ? '⏸ Prompter' : '▶ Prompter';
+  $('promptBtn').classList.toggle('on', following);
 }
 
 function setPos(pos) {
@@ -81,6 +101,7 @@ function wordsWithTimes(r) {
 }
 
 function onAudio(samples) {
+  if (!following) return;
   const t0 = performance.now();
   asrStream.acceptWaveform(RATE, samples);
   fed += samples.length / RATE;
@@ -305,6 +326,9 @@ $('scriptBtn').onclick = openEditor;
 $('cancelEdit').onclick = () => $('editor').classList.remove('open');
 $('saveEdit').onclick = () => { loadScript($('scriptText').value); $('editor').classList.remove('open'); };
 $('recBtn').onclick = toggleRecord;
+$('promptBtn').onclick = togglePrompter;
+// A clicked button keeps focus, and Space would then press it as well as run the shortcut.
+document.addEventListener('click', e => { if (e.target.closest('#top button')) e.target.closest('button').blur(); });
 $('camBtn').onclick = () => $('cam').classList.toggle('hidden');
 
 // Camera preview: drag to move, scroll over it to resize. Remembered between sessions.
@@ -381,6 +405,7 @@ document.addEventListener('keydown', e => {
   // Leave browser shortcuts alone: Ctrl+R must reload, not start a take.
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (e.key === 'r' || e.key === 'R') toggleRecord();
+  else if (e.key === ' ') togglePrompter();
   else if (e.key === 'v' || e.key === 'V') $('cam').classList.toggle('hidden');
   else if (e.key === 'ArrowDown') setPos(tracker.pos + 5);
   else if (e.key === 'ArrowUp') setPos(tracker.pos - 5);
@@ -408,12 +433,13 @@ else fetch('sample.md').then(r => r.text()).then(loadScript);
 window.sherpaReady.then(() => {
   recognizer = createOnlineRecognizer(Module);
   $('recBtn').disabled = false;
+  $('promptBtn').disabled = false;
   if (!new URLSearchParams(location.search).has('autostart')) autoStart();
 });
 
 // Test hook: ?autostart begins listening without a click and logs stats.
 if (new URLSearchParams(location.search).has('autostart')) {
-  window.sherpaReady.then(() => start()).then(() => {
+  window.sherpaReady.then(() => togglePrompter()).then(() => {
     setInterval(() => console.log('STATS', JSON.stringify({
       fed: +fed.toFixed(1), cpu: +(busy / 1000 / Math.max(fed, 1e-6)).toFixed(3),
       p50: Math.round([...lats].sort((a, b) => a - b)[lats.length >> 1] || 0),
